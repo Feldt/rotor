@@ -1,0 +1,8 @@
+.build/
+build/
+*.xcodeproj
+.swiftpm/
+
+.claude/worktrees/
+research/**/scratch/
+__pycache__/
