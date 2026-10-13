@@ -85,6 +85,7 @@ struct PanelView: View {
         .animation(reduceMotion ? nil : Motion.expand, value: model.addDraft)
         .animation(reduceMotion ? nil : Motion.expand, value: model.expandedID)
         .modifier(HostBackground(host: host))
+        .background(PinTopEdge())
         .onHover { inside in
             collapseTask?.cancel()
             if inside {
@@ -99,6 +100,9 @@ struct PanelView: View {
             }
         }
         .onAppear {
+            if isDemo, ProcessInfo.processInfo.environment["CLAUDE_ACCOUNTS_DEMO_SPREAD"] == "later" {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { withAnimation(FolderMotion.fan) { isHovering = true } }
+            }
             model.isPanelOpen = true
             model.panelOpened()
             if let t = AppModel.OpenTiming.requestedAt,
@@ -728,6 +732,64 @@ private struct HostBackground: ViewModifier {
         switch host {
         case .menuBarExtra: content
         case .panel: content.glassEffect(.regular, in: .rect(cornerRadius: Metrics.panelRadius))
+        }
+    }
+}
+
+
+/// Keeps the panel's top edge under the menu bar while its height changes. AppKit keeps a window's
+/// bottom edge when it resizes, so the folders fanning out pushed the panel up past the top of the
+/// screen. The top is taken when the panel opens and never goes above the screen's visible area.
+struct PinTopEdge: NSViewRepresentable {
+    func makeNSView(context: Context) -> PinView { PinView() }
+    func updateNSView(_ nsView: PinView, context: Context) {}
+
+    final class PinView: NSView {
+        private var top: CGFloat?
+        private var observers: [NSObjectProtocol] = []
+        private var isPinning = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach { NotificationCenter.default.removeObserver($0) }
+            observers = []
+            top = nil
+            guard let window else { return }
+            let nc = NotificationCenter.default
+            observers.append(nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    // The host positions the window as it opens; take the top once that has settled.
+                    DispatchQueue.main.async { self?.recordTop() }
+                }
+            })
+            observers.append(nc.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.top = nil }
+            })
+            // The menu bar host moves the window again after a resize; catch both.
+            for name in [NSWindow.didResizeNotification, NSWindow.didMoveNotification] {
+                observers.append(nc.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.pin() }
+                })
+            }
+            if window.isKeyWindow { DispatchQueue.main.async { self.recordTop() } }
+        }
+
+        private var visibleTop: CGFloat? { (window?.screen ?? NSScreen.main)?.visibleFrame.maxY }
+
+        private func recordTop() {
+            guard let window else { return }
+            top = min(window.frame.maxY, visibleTop ?? .greatestFiniteMagnitude)
+            pin()
+        }
+
+        private func pin() {
+            guard isPinning == false, let window else { return }
+            let limit = visibleTop ?? .greatestFiniteMagnitude
+            let wanted = min(top ?? window.frame.maxY, limit)
+            guard abs(window.frame.maxY - wanted) > 0.5 else { return }
+            isPinning = true
+            window.setFrameOrigin(NSPoint(x: window.frame.minX, y: (wanted - window.frame.height).rounded()))
+            isPinning = false
         }
     }
 }

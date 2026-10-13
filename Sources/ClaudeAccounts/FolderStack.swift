@@ -169,8 +169,8 @@ struct FolderCard: View {
 
     private var resetText: String {
         var parts: [String] = []
-        if let r = usage?.fiveHour?.resetsAt { parts.append("5h resets \(r.formatted(date: .omitted, time: .shortened))") }
-        if let r = usage?.weekly?.resetsAt { parts.append("week resets \(r.formatted(.dateTime.weekday(.abbreviated).hour().minute()))") }
+        if let r = usage?.fiveHour?.resetsAt { parts.append("Resets \(r.formatted(date: .omitted, time: .shortened))") }
+        if let r = usage?.weekly?.resetsAt { parts.append("week \(r.formatted(.dateTime.weekday(.abbreviated).hour().minute()))") }
         if let stale = model.staleAge(account.id) { parts.append(stale) }
         if parts.isEmpty, isCurrent { return "In Claude now" }
         return parts.joined(separator: " · ")
