@@ -145,6 +145,13 @@ struct AccountRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            if account.needsLabel != true, let u = model.usage[account.id], u.needsRefresh == false,
+               u.fiveHour != nil || u.weekly != nil {
+                UsageBars(usage: u, stale: model.staleAge(account.id))
+                    .padding(.leading, (isExpanded ? Metrics.expandedPad : Metrics.rowH) + Metrics.avatar + 8)
+                    .padding(.trailing, isExpanded ? Metrics.expandedPad : Metrics.rowH)
+                    .padding(.bottom, isExpanded ? 4 : 8)
+            }
             if isExpanded {
                 ExpandedUsage(account: account, model: model, subtitle: plan.isSubtitleInDetail ? plan.subtitle : nil)
                     .padding(.leading, Metrics.expandedPad + Metrics.avatar + 8)
@@ -375,8 +382,6 @@ struct ExpandedUsage: View {
         VStack(alignment: .leading, spacing: 4) {
             if let subtitle { SubtitleLine(text: subtitle) }
             let u = model.usage[account.id]
-            if let w = u?.fiveHour { UsageLine(label: "5h", window: w, weekly: false, stale: model.staleAge(account.id)) }
-            if let w = u?.weekly { UsageLine(label: "Week", window: w, weekly: true, stale: nil) }
             if u?.needsRefresh == true {
                 Text("Open to Refresh")
                     .font(.system(size: 11))
@@ -404,15 +409,9 @@ struct UsageLine: View {
         HStack(spacing: 6) {
             Text(label)
                 .frame(width: 30, alignment: .leading)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
-                    Capsule().fill(levelColor(window.level))
-                        .frame(width: max(3, geo.size.width * window.utilization))
-                }
-            }
-            .frame(height: 3)
-            .opacity(window.stale ? 0.5 : 1)
+            UsageBar(utilization: window.utilization)
+                .frame(height: 6)
+                .opacity(window.stale ? 0.5 : 1)
             Text(value)
                 .contentTransition(.numericText())
                 .frame(width: 86, alignment: .trailing)
@@ -433,6 +432,70 @@ struct UsageLine: View {
         }
         if let stale { parts.append(stale) }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// The always-visible usage under an account's name: 5h and Week bars.
+struct UsageBars: View {
+    var usage: AccountUsage
+    var stale: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let w = usage.fiveHour { UsageLine(label: "5h", window: w, weekly: false, stale: stale) }
+            if let w = usage.weekly { UsageLine(label: "Week", window: w, weekly: true, stale: nil) }
+        }
+    }
+}
+
+/// Green → yellow → orange → red as usage climbs.
+func usageColor(_ u: Double) -> Color {
+    switch u {
+    case ..<0.5: .green
+    case ..<0.8: .yellow
+    case ..<0.95: .orange
+    default: .red
+    }
+}
+
+/// A capsule that fills from empty on appear, springs to new values, and carries a slow shimmer.
+struct UsageBar: View {
+    var utilization: Double
+    @State private var shown: Double = 0
+    @State private var phase: CGFloat = -0.4
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GeometryReader { geo in
+            let u = min(1, max(0, utilization))
+            let w = max(6, geo.size.width * shown)
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule()
+                    .fill(LinearGradient(colors: [usageColor(u).opacity(0.75), usageColor(u)],
+                                         startPoint: .leading, endPoint: .trailing))
+                    .frame(width: w)
+                    .overlay {
+                        if reduceMotion == false {
+                            LinearGradient(colors: [.clear, .white.opacity(0.45), .clear],
+                                           startPoint: .leading, endPoint: .trailing)
+                                .frame(width: w * 0.35)
+                                .offset(x: phase * w)
+                                .blendMode(.plusLighter)
+                        }
+                    }
+                    .clipShape(Capsule())
+                    .shadow(color: usageColor(u).opacity(0.5), radius: 3)
+            }
+        }
+        .onAppear {
+            if reduceMotion { shown = utilization; return }
+            withAnimation(.spring(duration: 0.9, bounce: 0.25).delay(0.05)) { shown = utilization }
+            withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) { phase = 1.1 }
+        }
+        .onChange(of: utilization) { _, v in
+            withAnimation(reduceMotion ? nil : .spring(duration: 0.7, bounce: 0.2)) { shown = v }
+        }
     }
 }
 
