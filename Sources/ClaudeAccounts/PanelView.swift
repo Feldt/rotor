@@ -12,7 +12,7 @@ enum Motion {
 }
 
 enum Metrics {
-    static let width: CGFloat = 260
+    static let width: CGFloat = 300
     static let inset: CGFloat = 5
     /// Top and bottom inset of the list, like Control Center modules.
     static let listV: CGFloat = 10
@@ -39,11 +39,19 @@ struct PanelView: View {
     var host: PanelHost
     var openSettings: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+    @State private var collapseTask: Task<Void, Never>?
+
+    /// The folders overlap until the pointer is over the panel. VoiceOver always gets them spread.
+    private var isSpread: Bool {
+        isHovering || NSWorkspace.shared.isVoiceOverEnabled
+            || (isDemo && ProcessInfo.processInfo.environment["CLAUDE_ACCOUNTS_DEMO_SPREAD"] == "1")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(spacing: 0) {
-                ForEach(model.accounts) { a in AccountRow(account: a, model: model) }
+                FolderStack(model: model, spread: isSpread)
                 if model.addDraft.isOpen { AddRow(model: model) }
             }
             .padding(.horizontal, Metrics.inset)
@@ -77,6 +85,19 @@ struct PanelView: View {
         .animation(reduceMotion ? nil : Motion.expand, value: model.addDraft)
         .animation(reduceMotion ? nil : Motion.expand, value: model.expandedID)
         .modifier(HostBackground(host: host))
+        .onHover { inside in
+            collapseTask?.cancel()
+            if inside {
+                withAnimation(reduceMotion ? nil : FolderMotion.fan) { isHovering = true }
+            } else {
+                // A short grace period so brushing the edge doesn't snap the stack shut.
+                collapseTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard Task.isCancelled == false else { return }
+                    withAnimation(reduceMotion ? nil : FolderMotion.fold) { isHovering = false }
+                }
+            }
+        }
         .onAppear {
             model.isPanelOpen = true
             model.panelOpened()
@@ -461,6 +482,7 @@ func usageColor(_ u: Double) -> Color {
 /// A capsule that fills from empty on appear, springs to new values, and carries a slow shimmer.
 struct UsageBar: View {
     var utilization: Double
+    var shimmerDelay: Double = 0
     @State private var shown: Double = 0
     @State private var phase: CGFloat = -0.4
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -491,7 +513,7 @@ struct UsageBar: View {
         .onAppear {
             if reduceMotion { shown = utilization; return }
             withAnimation(.spring(duration: 0.9, bounce: 0.25).delay(0.05)) { shown = utilization }
-            withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) { phase = 1.1 }
+            withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false).delay(shimmerDelay)) { phase = 1.1 }
         }
         .onChange(of: utilization) { _, v in
             withAnimation(reduceMotion ? nil : .spring(duration: 0.7, bounce: 0.2)) { shown = v }

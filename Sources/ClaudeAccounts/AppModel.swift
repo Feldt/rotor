@@ -189,9 +189,9 @@ final class AppModel {
 
     /// What an account's row shows right now: its buttons (only while expanded), checkmark, window
     /// icon and subtitle. The rules live in Core, where they are tested.
-    func rowPlan(for a: Account) -> RowPlan {
+    func rowPlan(for a: Account, expanded: Bool? = nil) -> RowPlan {
         RowPlan(for: RowFacts(isParallelOn: parallelEnabled, isMain: a.id == currentID,
-                              hasOwnWindow: windows[a.id]?.isOpen == true, isExpanded: expandedID == a.id,
+                              hasOwnWindow: windows[a.id]?.isOpen == true, isExpanded: expanded ?? (expandedID == a.id),
                               isBeingNamed: a.needsLabel == true, isActive: activeAccountID == a.id,
                               isSwitching: isSwitching))
     }
@@ -289,7 +289,13 @@ final class AppModel {
         now = Date()
         if snap.accounts != accounts { accounts = snap.accounts }
         if snap.state != state { state = snap.state }
-        if snap.currentID != currentID { currentID = snap.currentID }
+        if snap.currentID != currentID {
+            let previous = currentID
+            currentID = snap.currentID
+            // A switch or add just changed accounts: the new one gets a fresh token from Claude and
+            // the old one a freshly saved slot. Check both soon instead of waiting out any backoff.
+            if previous != nil { retryUsageSoon([snap.currentID, previous].compactMap { $0 }) }
+        }
         if snap.liveExpiry != liveExpiry { liveExpiry = snap.liveExpiry }
         if snap.syncHealth != syncHealth { syncHealth = snap.syncHealth }
         chromeRestoresTabs = snap.chromeRestoresTabs
@@ -379,6 +385,18 @@ final class AppModel {
         // Always try the current account once at launch (unless rate-limited), through the queue.
         if showUsage { service.queueLaunch(currentID, now: Date()) }
         tickUsage()
+    }
+
+    /// Attempts these accounts ahead of any backoff, after Claude has had time to mint a token
+    /// (and once more a little later in case it was slow).
+    private func retryUsageSoon(_ ids: [String]) {
+        for delay in [20.0, 60.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.showUsage, let service = self.usageProvider as? UsageService else { return }
+                for id in ids { service.queueLaunch(id, now: Date()) }
+                self.tickUsage()
+            }
+        }
     }
 
     private func tickUsage() {
@@ -485,6 +503,8 @@ final class AppModel {
                 service.queueLaunch(a.id, now: Date())
                 tickUsage()
             }
+            // Claude mints the new account's token a few seconds after sign-in; try again then.
+            retryUsageSoon([a.id])
         case .signedInAsKnown(let a):
             let next = StatusLine.signedInAsKnown(label: a.shortLabel)
             if line != next { line = next }
