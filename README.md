@@ -5,9 +5,18 @@ account once; after that, one click swaps accounts in about 5–10 seconds with 
 show each account's 5-hour usage, open extra Claude windows on other accounts side by side, and
 (optionally) switch Claude in Chrome along with the desktop app. Design notes: [SPEC.md](SPEC.md).
 
+**Autopilot** (optional): switches accounts automatically at the usage limit and resumes your chats
+after every switch. See [autopilot/README.md](autopilot/README.md).
+
 This is a personal tool shared as source, not an official Anthropic product. It works by quitting Claude,
 swapping Claude's saved login files on your Mac and reopening it. Nothing leaves your Mac except the
 usage check, which calls Anthropic's own usage endpoint with your own token.
+
+## Quickest setup
+
+Paste this into Claude Code (in the Claude desktop app) and it will do the install with you:
+
+> Set up Rotor with its autopilot from https://github.com/Feldt/rotor. Follow SETUP.md.
 
 ## Before you start
 
