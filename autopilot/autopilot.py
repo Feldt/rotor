@@ -329,9 +329,23 @@ NUDGE_MSG = ("Rotor watchdog: this chat and its background work have been silent
              "Don't ask the user anything; they may be away.")
 
 
+def task_cwd():
+    """A folder Claude trusts, or it skips the task ("The folder is not trusted"). Use the
+    folder of the most recently used chat that Claude has marked trusted; home is the fallback."""
+    trusted = {k for k, v in load(os.path.join(HOME, ".claude.json"), {}).get("projects", {}).items()
+               if isinstance(v, dict) and v.get("hasTrustDialogAccepted")}
+    files = glob.glob(os.path.join(SESSIONS, "*", "*", "local_*.json"))
+    for f in sorted(files, key=lambda f: os.path.getmtime(f), reverse=True):
+        cwd = load(f, {}).get("cwd")
+        if cwd and cwd in trusted and os.path.isdir(cwd):
+            return cwd
+    return HOME
+
+
 def arm_resume_task(target):
     """Upsert the resume task into every org dir of the target account, firing shortly."""
     fire_ms = int((time.time() + RESUME_DELAY_S) * 1000)
+    cwd = task_cwd()
     # Every account: the app may land on another account than asked (a stale saved login) and
     # picks the org dir itself. A stray armed copy just finds nothing pending and stops.
     dirs = [d for d in glob.glob(os.path.join(SESSIONS, "*", "*")) if os.path.isdir(d)]
@@ -348,7 +362,7 @@ def arm_resume_task(target):
             "enabled": True,
             "filePath": TASK_FILE,
             "createdAt": int(time.time() * 1000),
-            "cwd": HOME,
+            "cwd": cwd,
             "permissionMode": "bypassPermissions",
             "permissionModeCarried": True,
         })
