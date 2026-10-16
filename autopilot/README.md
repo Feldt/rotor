@@ -4,7 +4,7 @@ Keeps your Claude Code chats in the desktop app running around the clock across 
 accounts. Nobody has to click anything.
 
 - **Switches by itself.** Every 2 minutes it checks usage on every account Rotor knows. When the
-  current account reaches 95% of its 5-hour limit (or 98% of its weekly limit), it switches to the
+  current account reaches 99% of its 5-hour or weekly limit, it switches to the
   account with the most room.
 - **Resumes chats after a restart.** A switch restarts Claude, which stops every chat and kills its
   background agents, workflows, monitors and wakeups. About 3 minutes after any Claude start, a

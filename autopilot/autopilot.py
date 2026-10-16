@@ -35,8 +35,8 @@ PROJECTS = os.path.join(HOME, ".claude", "projects")
 TASK_ID = "rotor-autoresume"
 TASK_FILE = os.path.join(HOME, ".claude", "scheduled-tasks", TASK_ID, "SKILL.md")
 
-FIVE_H_SWITCH = 0.95      # switch when the current account's 5h use reaches this
-WEEK_SWITCH = 0.98        # ... or its weekly use reaches this
+FIVE_H_SWITCH = 0.99      # switch when the current account's 5h use reaches this
+WEEK_SWITCH = 0.99        # ... or its weekly use reaches this
 CAND_MAX_5H = 0.80        # a target must have at most this much 5h use
 CAND_MAX_WEEK = 0.85      # ... and at most this much weekly use
 USAGE_FRESH_S = 20 * 60   # ignore usage older than this
